@@ -22,9 +22,9 @@ void OLEDDriver::clear() {
 }
 
 // Tekst weergeven op de opgegeven x,y locatie
-void OLEDDriver::displayText(const char* text, int x, int y) {
+void OLEDDriver::displayText(const char* text, int x, int y, int size) {
     display.setCursor(x, y);
-    display.setTextSize(1);
+    display.setTextSize(size);
     //display.setFont(&FreeMono9pt7b);
     display.setTextColor(SSD1306_WHITE);
     display.print(text);
@@ -32,7 +32,6 @@ void OLEDDriver::displayText(const char* text, int x, int y) {
 
 // Afbeelding weergeven van een array van bytes
 void OLEDDriver::displayImage(int x, int y, const uint8_t* image, int width, int height) {
-    display.clearDisplay();
     display.drawBitmap(x, y, image, width, height, SSD1306_WHITE);
 }
 

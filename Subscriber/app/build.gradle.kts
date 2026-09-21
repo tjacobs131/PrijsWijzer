@@ -1,16 +1,15 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    id("com.google.gms.google-services")
 }
 
 android {
-    namespace = "com.example.prijswijzer"
-    compileSdk {
-        version = release(37)
-    }
+    namespace = "com.localsoftware.prijswijzer"
+    compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.example.prijswijzer"
+        applicationId = "com.localsoftware.prijswijzer"
         minSdk = 26
         targetSdk = 37
         versionCode = 1
@@ -21,9 +20,11 @@ android {
 
     buildTypes {
         release {
-            optimization {
-                enable = false
-            }
+            isMinifyEnabled = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
     compileOptions {
@@ -36,6 +37,9 @@ android {
 }
 
 dependencies {
+    implementation("com.onesignal:OneSignal:[5.6.1, 5.99.99]")
+    implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
+    implementation("com.google.firebase:firebase-analytics")
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)

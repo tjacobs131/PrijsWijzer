@@ -1,4 +1,4 @@
-package com.example.prijswijzer
+package com.localsoftware.prijswijzer
 
 import org.junit.Test
 

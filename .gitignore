@@ -48,3 +48,4 @@ LilyGo/include/secrets.h
 
 # Auto-generated AssemblyInfo files
 **/Properties/AssemblyInfo.cs
+LilyGo/platformio.ini

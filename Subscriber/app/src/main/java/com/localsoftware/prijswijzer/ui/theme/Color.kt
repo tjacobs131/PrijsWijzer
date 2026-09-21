@@ -1,4 +1,4 @@
-package com.example.prijswijzer.ui.theme
+package com.localsoftware.prijswijzer.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

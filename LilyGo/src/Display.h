@@ -18,7 +18,7 @@ public:
     OLEDDriver();
     void begin();
     void clear();
-    void displayText(const char* text, int x, int y);
+    void displayText(const char* text, int x, int y, int size = 1);
     void displayImage(int x, int y, const uint8_t* image, int width, int height);
     void update();
 
