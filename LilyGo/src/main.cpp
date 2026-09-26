@@ -7,7 +7,6 @@
 #include "EnergyZeroAPI.h"
 #include "HomeWizardAPI.h"
 #include "GoodWeAPI.h"
-
 #include "icons.h"
 
 using namespace std;
@@ -44,9 +43,13 @@ GoodWeAPI goodwe;
 GoodWeData gwData;
 HomeWizardData hwData;
 
-// Advice Icons storage 
+// Advice and reason icons
 const uint8_t* active_smiley = icon_smiley_neutral;
-const uint8_t* active_reason = 0; 
+const uint8_t* active_reason = nullptr; 
+
+// Dynamic cycle tracking logic
+const uint8_t* active_reasons_array[5] = {0}; 
+int active_reasons_count = 0; 
 
 void setup() {
     Serial.begin(115200);
@@ -59,9 +62,13 @@ void setup() {
 
     display.clear();
     display.displayText("Connecting WiFi...", 0, 10);
+    String ssidDisplay = "SSID: ";
+    ssidDisplay += String(ssid);
+    display.displayText(ssidDisplay.c_str(), 0, 20);
     display.update();
     
     WiFi.begin(ssid, password);
+
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
@@ -75,7 +82,7 @@ void setup() {
     configTime(0, 0, "pool.ntp.org");
     time_t now = time(nullptr);
     while (now < 24 * 3600) {
-        delay(200);
+        delay(2000);
         now = time(nullptr);
     }
     Serial.println("Time synced.");
@@ -86,28 +93,42 @@ void setup() {
 
     String inverterList = GoodWeAPI::searchInverters();
     Serial.println("Inverter Search Result: " + inverterList);
-    String inverterIP = inverterList.substring(0, inverterList.indexOf(','));
-    Serial.println("First Inverter IP: " + inverterIP);
+    if (inverterList.length() == 0) {
+        display.clear();
+        display.displayText("No inverter found", 0, 10);
+        display.update();
+        delay(2000);
+        return;
+    }
+    else
+    {
+        // Extract the first IP address from the response
+        int ipStart = inverterList.indexOf("IP:") + 3;
+        int ipEnd = inverterList.indexOf(";", ipStart);
+        String inverterIP = inverterList.substring(ipStart, ipEnd);
+        Serial.println("Inverter IP: " + inverterIP);
 
-    String inverterDisplay = "Inverter IP: ";
-    inverterDisplay += inverterIP;
-    display.displayText(inverterDisplay.c_str(), 0, 20);
+        display.displayText("Inverter IP: ", 0, 20);
+        display.displayText(inverterIP.c_str(), 0, 30);
+        display.update();
 
-    goodwe.init(inverterIP, 8899); 
+        goodwe.init(inverterIP, 8899); 
+    }
 
-    delay(1000);
+    delay(2000);
 
     display.clear();
     display.displayText("Setup: complete", 0, 10);
     display.update();
 
-    delay(100);
+    delay(2000);
     display.clear();
 
     mainState = Init;
 }
 
 unsigned long lastGoodWeUpdate = 0;
+unsigned long lastGoodweSearch = 0;
 unsigned long lastHomeWizardUpdate = 0;
 unsigned long lastEnergyZeroUpdate = 0;
 unsigned long lastStatusChange = 0;
@@ -117,21 +138,39 @@ bool goodweError = false;
 void loop() {
     time_t now = time(nullptr);
 
+    if (millis() - lastGoodweSearch >= 60000) {
+        lastGoodweSearch = millis();
+        String inverterList = GoodWeAPI::searchInverters();
+        Serial.println("Inverter Search Result: " + inverterList);
+
+
+        // Extract the first IP address from the response
+        int ipStart = inverterList.indexOf("IP:") + 3;
+        int ipEnd = inverterList.indexOf(";", ipStart);
+        String inverterIP = inverterList.substring(ipStart, ipEnd);
+        Serial.println("Inverter IP: " + inverterIP);
+
+        goodwe.init(inverterIP, 8899); 
+    }
+
     if (millis() + 500 - lastGoodWeUpdate >= 2000) {
+
         lastGoodWeUpdate = millis();
+        if (goodwe.isInitialized()) {
+            gwData = goodwe.getData();
 
-        gwData = goodwe.getData();
+            if (gwData.success) {
+                Serial.print("Current Inverter Power: ");
+                Serial.print(gwData.active_power_w);
+                Serial.println(" W");
 
-        if (gwData.success) {
-            Serial.print("Current Inverter Power: ");
-            Serial.print(gwData.active_power_w);
-            Serial.println(" W");
-
-            goodweError = false;
-        } else {
-            Serial.println(gwData.errorMessage);
-            goodweError = true;
+                goodweError = false;
+            } else {
+                Serial.println(gwData.errorMessage);
+                goodweError = true;
+            }
         }
+
     }
 
     if (millis() - lastHomeWizardUpdate >= 2000) {
@@ -141,6 +180,7 @@ void loop() {
 
     if (millis() - lastEnergyZeroUpdate >= 60000) {
         lastEnergyZeroUpdate = millis();
+        
         currentPrice = energyAPI.GetCurrentPrice();
     }
 
@@ -163,41 +203,101 @@ void loop() {
             break;
 
         case Standby:
-            // Route from Standby -> Decide -> PrintStatus
+            // Standby was called by the 
             mainState = Decide;
             break;
 
-        case Decide:
-            // Determine the advice / emojis based on the current data            
-            if (gwData.success && gwData.active_power_w > 1400) {
-                // High Solar Generation -> Good! 
-                active_smiley = icon_smiley_good;
-                active_reason = advice_icon_solar_panel;
-            } else if (hwData.active_power_w > 1500) {
-                // High HomeWizard Import -> Bad!
-                active_smiley = icon_smiley_wait;
-                active_reason = advice_icon_charging;
-            } else if (hwData.active_power_w < 200) {
-                // High HomeWizard Export -> Good!
-                active_smiley = icon_smiley_good;
-                active_reason = advice_icon_solar_panel;
-            } else if (currentPrice + 0.13 <= 0.17) {
-                // Very Cheap Energy -> Good!
-                active_smiley = icon_smiley_good;
-                active_reason = advice_icon_euro_symbol;
-            } else if (currentPrice + 0.13 >= 0.35) {
-                // Expensive Energy -> Wait!
-                active_smiley = icon_smiley_wait;
-                active_reason = advice_icon_euro_symbol;
-            } else {
-                // Normal usage / No specific advice -> Neutral.
-                active_smiley = icon_smiley_neutral;
-                active_reason = 0; 
+        case Decide: {
+            bool gw_high = gwData.active_power_w > 1200;
+            bool gw_low  = gwData.active_power_w < 300;
+            bool gw_medium = !gw_high && !gw_low;
+
+            bool hw_high_import = hwData.active_power_w > 2000;
+            bool hw_high_export = hwData.active_power_w < 400;
+            
+            float price      = currentPrice + 0.13;
+            bool price_low   = price < 0.18; 
+            bool price_high  = price > 0.33;
+            bool price_medium = !price_low && !price_high;
+            bool price_negative = price < 0.0;
+
+            // Init rule checkers
+            int good_votes = 0;
+            const uint8_t* reasons_good[5] = {nullptr};
+            int wait_votes = 0;
+            const uint8_t* reasons_wait[5] = {nullptr};
+            int neutral_votes = 0;
+            const uint8_t* reasons_neutral[5] = {nullptr};
+
+            // Prevent duplicate votes for the same reason by checking if the icon is already in the array
+            auto addVote = [](const uint8_t** arr, int& count, const uint8_t* icon) {
+                for(int i = 0; i < count; i++) { 
+                    if (arr[i] == icon) 
+                        return; 
+                    }
+                if (count < 5) arr[count++] = icon;
+            };
+
+            // Solar truths
+            if (gw_high) { 
+                addVote(reasons_good, good_votes, advice_icon_solar_panel); 
+            }
+            if (gw_medium) { 
+                addVote(reasons_neutral, neutral_votes, advice_icon_solar_panel); 
+            }
+            
+            // Import truths
+            // High grid draw with high price is always a strict warning
+            if (hw_high_import && price_high) { 
+                addVote(reasons_wait, wait_votes, advice_icon_charging); 
+            }
+            // Low grid draw with low price is always a strict good reason
+            if (hw_high_export && price_low) { 
+                addVote(reasons_good, good_votes, advice_icon_charging); 
             }
 
-            // Decide on push notification
-            bool doPushNotification;
-            doPushNotification = false;
+            // Fall back on price truths if no other reason was found / blend price in 
+            if (price_negative) { 
+                addVote(reasons_good, good_votes, advice_icon_euro_symbol); 
+            }
+            if (price_low)  { 
+                addVote(reasons_good, good_votes, advice_icon_euro_symbol); 
+            }
+            if (price_high) { 
+                addVote(reasons_wait, wait_votes, advice_icon_euro_symbol); 
+            }
+            if (price_medium) { 
+                addVote(reasons_neutral, neutral_votes, advice_icon_euro_symbol); 
+            }
+
+            // Determine active advice
+            if (good_votes > wait_votes) {
+                active_smiley = icon_smiley_good;
+                active_reasons_count = good_votes;
+                for (int i=0; i < good_votes; i++) active_reasons_array[i] = reasons_good[i];
+                
+            } else if (wait_votes > good_votes) {
+                active_smiley = icon_smiley_wait;
+                active_reasons_count = wait_votes;
+                for (int i=0; i < wait_votes; i++) active_reasons_array[i] = reasons_wait[i];
+
+            } else {
+                active_smiley = icon_smiley_neutral;
+                active_reasons_count = neutral_votes;
+
+                // Prioritize good reasons first
+                for (int i=0; i < good_votes; i++) {
+                    active_reasons_array[active_reasons_count++] = reasons_good[i];
+                }
+                for (int i=0; i < wait_votes; i++) {
+                    if (active_reasons_count < 5) active_reasons_array[active_reasons_count++] = reasons_wait[i]; 
+                }
+                for (int i=0; i < neutral_votes; i++) {
+                    if (active_reasons_count < 5) active_reasons_array[active_reasons_count++] = reasons_neutral[i]; 
+                }
+            }
+
+            bool doPushNotification = false;
             
             if (doPushNotification) {
                 mainState = PushNotification;
@@ -205,14 +305,14 @@ void loop() {
                 mainState = PrintStatus;
             }
             break;
+        }
 
         case PushNotification:
             Serial.println("State: PUSH NOTIFICATION");
             mainState = PrintStatus;
             break;
 
-        case PrintStatus:
-        {
+        case PrintStatus: {
             display.clear();
         
             switch (currentStatus) {
@@ -252,15 +352,24 @@ void loop() {
                     break;
             }
 
+            // Cycle through the active reasons array to display the current reason icon
+            if (active_reasons_count > 0) {
+                // Swap every 2 seconds
+                int timeTicker_index = (millis() / 2000) % active_reasons_count;
+                active_reason = active_reasons_array[timeTicker_index];
+            } else {
+                active_reason = nullptr; 
+            }
+
+            // Show the advice and reason icons on the display if they are set
             if (active_smiley != nullptr) {
                 display.displayImage(78, 0, active_smiley, 24, 24); 
             }
             if (active_reason != nullptr) {
                 display.displayImage(104, 0, active_reason, 24, 24); 
             }
-            // --------------------------------------------------
 
-            // Scope block for string conversion of HomeWizard Power (Bottom)
+            // HomeWizard Phase Data Display
             {
                 stringstream stream;
                 stream.str("");

@@ -5,6 +5,10 @@ void GoodWeAPI::init(const String& inverterIp, uint16_t inverterPort) {
     port = inverterPort;
 }
 
+bool GoodWeAPI::isInitialized() const {
+    return !ip.isEmpty() && port != 0;
+}
+
 GoodWeData GoodWeAPI::getData() {
     GoodWeData data;
     data.success = false;

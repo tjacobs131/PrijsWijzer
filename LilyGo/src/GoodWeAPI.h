@@ -19,6 +19,7 @@ private:
 
 public:
     void init(const String& inverterIp, uint16_t inverterPort = 8899);
+    bool isInitialized() const;
 
     GoodWeData getData();
 
