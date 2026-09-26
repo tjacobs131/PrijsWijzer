@@ -15,6 +15,7 @@ public:
 
     float GetCurrentPrice();
     int16_t GetSecondsSinceLastUpdate() const;
+    String GetCachedPricesJSON() const;
 
 private:
     String url;
@@ -23,6 +24,7 @@ private:
     float currentPrice = -1.0;               
     int16_t secondsSinceLastUpdate = -1;     
     time_t lastUpdateTimestamp = 0;          
+    String cachedPricesJSON = "{}";
     
     string getURL();
     bool createConnection(const string& url);
